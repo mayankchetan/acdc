@@ -529,7 +529,7 @@ const charts = computed(() => {
             <div class="card-body">
                 <div class="row">
                     <div class="col-10">
-                        <div style="width:100%; height: 80vh">
+                        <div style="width:100%; height: 120vh">
                             <ModeViz :ModeData="project.modeViz[project.currentVizID]" :showNodePaths="showNodePaths">
                             </ModeViz>
                         </div>
