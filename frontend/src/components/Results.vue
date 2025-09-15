@@ -241,6 +241,81 @@ const charts = computed(() => {
     return objs
 })
 
+const bladeTipChart = computed(() => {
+    const configs = [
+        { frequency: 0.05, amplitude: 70, phase: 0, label: 'sin(x)', color: '#1f77b4' },
+        { frequency: 0.1, amplitude: 50, phase: 0, label: 'sin(2x)', color: '#ff7f0e' },
+        { frequency: 0.15, amplitude: 40, phase: 0, label: 'sin(3x)', color: '#2ca02c' },
+        { frequency: 0.08, amplitude: 30, phase: Math.PI/4, label: 'sin(1.6x)', color: '#d62728' }
+    ]
+
+    let data = { datasets: [] } as ChartData<'scatter'>
+
+    // Generate data for each sine wave
+    configs.forEach(config => {
+        const points: {x: number, y: number}[] = []
+        for (let i = 0; i < 200; i++) {
+            const x = (i - 100) * 0.1
+            const y = config.amplitude * Math.sin(x * (config.frequency / 0.05) + config.phase)
+            points.push({ x, y })
+        }
+
+        data.datasets.push({
+            label: config.label,
+            data: points,
+            borderColor: config.color,
+            backgroundColor: config.color,
+            showLine: true,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            borderWidth: 2,
+        })
+    })
+
+    const options: ChartOptions<'scatter'> = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { 
+                display: true,
+                position: 'right',
+                labels: {
+                    font: { size: 12 }
+                }
+            },
+            title: {
+                display: true,
+                text: 'Blade Tip Deflection across Frames',
+                font: { size: 16, weight: 'bold' }
+            }
+        },
+        scales: {
+            x: {
+                title: { display: true, text: 'Frames', font: { size: 14 } },
+                ticks: { font: { size: 12 } },
+                grid: {
+                    color: '#e0e0e0',
+                }
+            },
+            y: {
+                title: { display: true, text: 'Tip Deflection', font: { size: 14 } },
+                ticks: { font: { size: 12 } },
+                grid: {
+                    color: '#e0e0e0',
+                }
+            },
+        },
+        interaction: {
+            mode: 'nearest',
+            intersect: false
+        },
+        animation: { duration: 0 }
+    }
+
+    return { data, options }
+})
+
+
 
 </script>
 
@@ -529,9 +604,14 @@ const charts = computed(() => {
             <div class="card-body">
                 <div class="row">
                     <div class="col-10">
-                        <div style="width:100%; height: 120vh">
+                        <!-- 3D Mode Visualization (80% height) -->
+                        <div style="width:100%; height: 96vh">
                             <ModeViz :ModeData="project.modeViz[project.currentVizID]" :showNodePaths="showNodePaths">
                             </ModeViz>
+                        </div>
+                        <!-- 2D Sine Wave Chart (20% height) -->
+                        <div style="width:100%; height: 24vh" class="mt-3">
+                            <Scatter ref="bladeTipChart" :options="bladeTipChart.options" :data="bladeTipChart.data" />
                         </div>
                     </div>
                     <div class="col-2">
