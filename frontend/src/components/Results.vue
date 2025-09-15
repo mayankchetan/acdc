@@ -605,12 +605,12 @@ const bladeTipChart = computed(() => {
                 <div class="row">
                     <div class="col-10">
                         <!-- 3D Mode Visualization (80% height) -->
-                        <div style="width:100%; height: 96vh">
+                        <div style="width:100%; height: 80vh">
                             <ModeViz :ModeData="project.modeViz[project.currentVizID]" :showNodePaths="showNodePaths">
                             </ModeViz>
                         </div>
                         <!-- 2D Sine Wave Chart (20% height) -->
-                        <div style="width:100%; height: 24vh" class="mt-3">
+                        <div style="width:100%; height: 30vh" class="mt-3">
                             <Scatter ref="bladeTipChart" :options="bladeTipChart.options" :data="bladeTipChart.data" />
                         </div>
                     </div>

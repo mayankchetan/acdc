@@ -53,9 +53,9 @@ function createFrames(modeData: viz.ModeData) {
             const material = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1 });
             const curveObject = new THREE.Line(geometry, material);
             frameGroup.add(curveObject)
-            allFramesGroup.add(curveObject.clone())
+            allFramesGroup.add(curveObject.clone()) // Add clone of object to be used for view sizing
         }
-        frameGroup.visible = false
+        frameGroup.visible = false // Initialize each group to not visible for animation
         frames.push(frameGroup)
         scene.add(frameGroup)
     }
@@ -105,15 +105,16 @@ const views = [
     {
         // Top View
         left: 0,
-        bottom: 0.75,
+        bottom: 0.705,
         width: 0.4,
-        height: 0.25,
+        height: 0.30,
         up: [1, 0, 0],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
+            // Calculate distance along Z axis to fit model in frame horizontally
             const fov = camera.fov * (Math.PI / 180);
             const fovh = 2 * Math.atan(Math.tan(fov / 2) * camera.aspect);
             let distance = 1.05 * (frameSize.y / 2 / Math.tan(fovh / 2) + frameSize.z)
-            camera.position.fromArray([0, 0, distance]);
+            camera.position.fromArray([0, 0, distance]); // Looking along -Z (downward)
             camera.lookAt(frameCenter);
         },
         camera: new THREE.PerspectiveCamera,
@@ -123,11 +124,13 @@ const views = [
         left: 0,
         bottom: 0,
         width: 0.4,
-        height: 0.75,
+        height: 0.70,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
-            let distance = 1.15 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.x / 2)
-            camera.position.fromArray([-distance, 0, frameCenter.z]);
+            // Calculate distance along -X axis to fit model in frame vertically
+            // See https://wejn.org/2020/12/cracking-the-threejs-object-fitting-nut/ for equation
+            let distance = 1.05 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.x / 2)
+            camera.position.fromArray([-distance, 0, frameCenter.z]); // Looking along X (downwind)
             camera.lookAt(frameCenter);
         },
         camera: new THREE.PerspectiveCamera,
@@ -136,27 +139,30 @@ const views = [
         // Side View
         left: 0.402,
         bottom: 0,
-        width: 0.25,
-        height: 0.75,
+        width: 0.3,
+        height: 0.70,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
-            let distance = 1.15 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.y / 2)
-            camera.position.fromArray([0, -distance, frameCenter.z]);
+            // Calculate distance along -Y axis to fit model in frame vertically
+            let distance = 1.05 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.y / 2)
+            camera.position.fromArray([0, -distance, frameCenter.z]); // Looking along -Y (side)
             camera.lookAt(frameCenter);
         },
         camera: new THREE.PerspectiveCamera,
     },
+
     {
         // Isometric View
-        left: 0.654,
+        left: 0.704,
         bottom: 0,
-        width: 0.35,
+        width: 0.3,
         height: 1.0,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
-            let distanceFront = 1.0 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.x / 2)
-            let distanceSide = 1.0 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.y / 2)
-            camera.position.fromArray([-distanceFront, -distanceSide, frameCenter.z + 3 * frameSize.z]);
+            // Calculate distance along Z axis to fit model in frame horizontally
+            let distanceFront = 0.8 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.x / 2)
+            let distanceSide = 0.8 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.y / 2)
+            camera.position.fromArray([-distanceFront, -distanceSide, frameCenter.z + 3 * frameSize.z]); // Looking along -Z (downward)
             camera.lookAt(frameCenter);
         },
         camera: new THREE.PerspectiveCamera,
@@ -168,17 +174,16 @@ function animate() {
     delta += clock.getDelta()
     if (delta > 1.5 / frames.length) {
         delta = 0
-        if (frames.length > 0) {
-            frames[frameNum].visible = false;
-            frameNum++
-            if (frameNum >= frames.length) frameNum = 0
-            frames[frameNum].visible = true;
-        }
+        frames[frameNum].visible = false;
+        frameNum++
+        if (frameNum >= frames.length) frameNum = 0
+        frames[frameNum].visible = true;
         render();
     }
 }
 
 function render() {
+
     const canvas = renderer.domElement;
     const canvasWidth = canvas.clientWidth;
     const canvasHeight = canvas.clientHeight;
@@ -187,6 +192,7 @@ function render() {
     }
 
     for (let ii = 0; ii < views.length; ++ii) {
+
         const view = views[ii];
         const camera = view.camera;
 
@@ -195,7 +201,7 @@ function render() {
         const left = Math.floor(canvasWidth * view.left);
         const bottom = Math.floor(canvasHeight * view.bottom);
         const width = Math.floor(canvasWidth * view.width);
-        const height = Math.floor(canvasWidth * view.height);
+        const height = Math.floor(canvasHeight * view.height);
 
         renderer.setViewport(left, bottom, width, height);
         renderer.setScissor(left, bottom, width, height);
@@ -209,6 +215,7 @@ function render() {
 }
 
 onMounted(() => {
+
     const canvas = <HTMLCanvasElement>document.getElementById('modeVizCanvas')!;
 
     for (let ii = 0; ii < views.length; ++ii) {
