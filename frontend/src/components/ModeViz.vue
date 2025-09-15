@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { reactive, ref, onMounted, computed, watch } from 'vue'
+import { reactive, ref, onMounted, computed, watch, nextTick } from 'vue'
 import { main, viz } from '../../wailsjs/go/models';
 import { useProjectStore } from '../project';
 import * as THREE from 'three'
@@ -32,108 +32,208 @@ let clock = new THREE.Clock();
 let delta = 0
 const FOV = 10
 
-// 2D Plot scene and group
-let plot2DScene: THREE.Scene;
-let plotGroup: THREE.Group;
+// 2D Chart variables
+const chartCanvas = ref<HTMLCanvasElement>()
+let chartCtx: CanvasRenderingContext2D
+let chartData = reactive({
+    datasets: [
+        { name: 'sin(x)', color: '#1f77b4', data: [] as {x: number, y: number}[] },
+        { name: 'sin(2x)', color: '#ff7f0e', data: [] as {x: number, y: number}[] },
+        { name: 'sin(3x)', color: '#2ca02c', data: [] as {x: number, y: number}[] },
+        { name: 'sin(1.6x)', color: '#d62728', data: [] as {x: number, y: number}[] }
+    ]
+})
 
-function create2DPlot() {
-    plot2DScene = new THREE.Scene();
-    plotGroup = new THREE.Group();
+// Chart dimensions and margins
+const chartMargins = { top: 40, right: 120, bottom: 60, left: 60 }
 
-    // Create sine wave data
-    const points: THREE.Vector3[] = [];
-    const numPoints = 100;
-    const amplitude = 80;
-    const frequency = 0.1; // Increased frequency for better visualization
+function generateChartData() {
+    const configs = [
+        { frequency: 0.05, amplitude: 70, phase: 0 },
+        { frequency: 0.1, amplitude: 50, phase: 0 },
+        { frequency: 0.15, amplitude: 40, phase: 0 },
+        { frequency: 0.08, amplitude: 30, phase: Math.PI/4 }
+    ]
+
+    configs.forEach((config, index) => {
+        const data: {x: number, y: number}[] = []
+        for (let i = 0; i < 200; i++) {
+            const x = (i - 100) * 0.1
+            const y = config.amplitude * Math.sin(x * (config.frequency / 0.05) + config.phase)
+            data.push({ x, y })
+        }
+        chartData.datasets[index].data = data
+    })
+}
+
+function resizeChart() {
+    if (!chartCanvas.value) return
     
-    for (let i = 0; i < numPoints; i++) {
-        const x = (i - numPoints/2) * 2; // X position from -100 to +100
-        const xNormalized = x / 100 * Math.PI * 2; // Convert to radians for sine function
-        const y = amplitude * Math.sin(xNormalized); // Now sine starts at 0 when x=0
-        points.push(new THREE.Vector3(x, y, 0));
+    const container = chartCanvas.value.parentElement
+    if (container) {
+        chartCanvas.value.width = container.clientWidth
+        chartCanvas.value.height = container.clientHeight
+        drawChart()
+    }
+}
+
+function drawChart() {
+    if (!chartCtx || !chartCanvas.value) return
+
+    const canvas = chartCanvas.value
+    const ctx = chartCtx
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    
+    // Calculate chart area
+    const chartWidth = canvas.width - chartMargins.left - chartMargins.right
+    const chartHeight = canvas.height - chartMargins.top - chartMargins.bottom
+    
+    // Calculate data bounds
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    chartData.datasets.forEach(dataset => {
+        dataset.data.forEach(point => {
+            minX = Math.min(minX, point.x)
+            maxX = Math.max(maxX, point.x)
+            minY = Math.min(minY, point.y)
+            maxY = Math.max(maxY, point.y)
+        })
+    })
+
+    // Helper functions
+    const xScale = (x: number) => chartMargins.left + ((x - minX) / (maxX - minX)) * chartWidth
+    const yScale = (y: number) => chartMargins.top + chartHeight - ((y - minY) / (maxY - minY)) * chartHeight
+
+    // Draw background
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(chartMargins.left, chartMargins.top, chartWidth, chartHeight)
+
+    // Draw grid
+    ctx.strokeStyle = '#e0e0e0'
+    ctx.lineWidth = 1
+    
+    // Vertical grid lines
+    for (let i = 0; i <= 10; i++) {
+        const x = chartMargins.left + (i / 10) * chartWidth
+        ctx.beginPath()
+        ctx.moveTo(x, chartMargins.top)
+        ctx.lineTo(x, chartMargins.top + chartHeight)
+        ctx.stroke()
+    }
+    
+    // Horizontal grid lines
+    for (let i = 0; i <= 10; i++) {
+        const y = chartMargins.top + (i / 10) * chartHeight
+        ctx.beginPath()
+        ctx.moveTo(chartMargins.left, y)
+        ctx.lineTo(chartMargins.left + chartWidth, y)
+        ctx.stroke()
     }
 
-    // Create the sine wave line
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-    const lineMaterial = new THREE.LineBasicMaterial({ 
-        color: 0x00ff00, 
-        linewidth: 3 
-    });
-    const line = new THREE.Line(lineGeometry, lineMaterial);
-    plotGroup.add(line);
-
-    // Create axes
-    const axesMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+    // Draw axes
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 2
     
     // X-axis
-    const xAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-100, 0, 0),
-        new THREE.Vector3(100, 0, 0)
-    ]);
-    const xAxis = new THREE.Line(xAxisGeometry, axesMaterial);
-    plotGroup.add(xAxis);
-
+    ctx.beginPath()
+    ctx.moveTo(chartMargins.left, chartMargins.top + chartHeight)
+    ctx.lineTo(chartMargins.left + chartWidth, chartMargins.top + chartHeight)
+    ctx.stroke()
+    
     // Y-axis
-    const yAxisGeometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, -100, 0),
-        new THREE.Vector3(0, 100, 0)
-    ]);
-    const yAxis = new THREE.Line(yAxisGeometry, axesMaterial);
-    plotGroup.add(yAxis);
+    ctx.beginPath()
+    ctx.moveTo(chartMargins.left, chartMargins.top)
+    ctx.lineTo(chartMargins.left, chartMargins.top + chartHeight)
+    ctx.stroke()
 
-    // Add X and Y labels using sprites
-    // X-label
-    const xLabelCanvas = document.createElement('canvas');
-    const xLabelContext = xLabelCanvas.getContext('2d')!;
-    xLabelCanvas.width = 128;
-    xLabelCanvas.height = 64;
-    xLabelContext.fillStyle = '#ffffff';
-    xLabelContext.font = '24px Arial';
-    xLabelContext.textAlign = 'center';
-    xLabelContext.fillText('Time (s)', 64, 40);
+    // Draw axis labels
+    ctx.fillStyle = '#000000'
+    ctx.font = '12px Arial'
+    ctx.textAlign = 'center'
+    
+    // X-axis labels
+    for (let i = 0; i <= 5; i++) {
+        const x = chartMargins.left + (i / 5) * chartWidth
+        const value = minX + (i / 5) * (maxX - minX)
+        ctx.fillText(value.toFixed(1), x, chartMargins.top + chartHeight + 20)
+    }
+    
+    // Y-axis labels
+    ctx.textAlign = 'right'
+    for (let i = 0; i <= 5; i++) {
+        const y = chartMargins.top + chartHeight - (i / 5) * chartHeight
+        const value = minY + (i / 5) * (maxY - minY)
+        ctx.fillText(value.toFixed(0), chartMargins.left - 10, y + 4)
+    }
 
-    const xLabelTexture = new THREE.CanvasTexture(xLabelCanvas);
-    const xLabelMaterial = new THREE.SpriteMaterial({ map: xLabelTexture });
-    const xLabel = new THREE.Sprite(xLabelMaterial);
-    xLabel.position.set(0, -120, 0);
-    xLabel.scale.set(60, 30, 1);
-    plotGroup.add(xLabel);
+    // Draw data lines
+    chartData.datasets.forEach((dataset, datasetIndex) => {
+        ctx.strokeStyle = dataset.color
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        
+        let first = true
+        dataset.data.forEach((point, pointIndex) => {
+            const x = xScale(point.x)
+            const y = yScale(point.y)
+            
+            if (x >= chartMargins.left && x <= chartMargins.left + chartWidth) {
+                if (first) {
+                    ctx.moveTo(x, y)
+                    first = false
+                } else {
+                    ctx.lineTo(x, y)
+                }
+            }
+        })
+        ctx.stroke()
+    })
 
-    // Y-label
-    const yLabelCanvas = document.createElement('canvas');
-    const yLabelContext = yLabelCanvas.getContext('2d')!;
-    yLabelCanvas.width = 128;
-    yLabelCanvas.height = 64;
-    yLabelContext.fillStyle = '#ffffff';
-    yLabelContext.font = '24px Arial';
-    yLabelContext.textAlign = 'center';
-    yLabelContext.fillText('Amplitude', 64, 40);
+    // Draw legend
+    const legendX = chartMargins.left + chartWidth + 20
+    chartData.datasets.forEach((dataset, index) => {
+        const y = chartMargins.top + 20 + index * 25
+        
+        // Legend line
+        ctx.strokeStyle = dataset.color
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(legendX, y)
+        ctx.lineTo(legendX + 20, y)
+        ctx.stroke()
+        
+        // Legend text
+        ctx.fillStyle = '#000000'
+        ctx.font = '12px Arial'
+        ctx.textAlign = 'left'
+        ctx.fillText(dataset.name, legendX + 25, y + 4)
+    })
 
-    const yLabelTexture = new THREE.CanvasTexture(yLabelCanvas);
-    const yLabelMaterial = new THREE.SpriteMaterial({ map: yLabelTexture });
-    const yLabel = new THREE.Sprite(yLabelMaterial);
-    yLabel.position.set(-120, 0, 0);
-    yLabel.scale.set(60, 30, 1);
-    plotGroup.add(yLabel);
+    // Draw title
+    ctx.fillStyle = '#000000'
+    ctx.font = 'bold 16px Arial'
+    ctx.textAlign = 'center'
+    ctx.fillText('Sine Wave Comparison', canvas.width / 2, 25)
 
-    // Title
-    const titleCanvas = document.createElement('canvas');
-    const titleContext = titleCanvas.getContext('2d')!;
-    titleCanvas.width = 256;
-    titleCanvas.height = 64;
-    titleContext.fillStyle = '#ffffff';
-    titleContext.font = '28px Arial';
-    titleContext.textAlign = 'center';
-    titleContext.fillText('Sine Wave', 128, 40);
+    // Draw axis titles
+    ctx.font = '14px Arial'
+    ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 10)
+    
+    ctx.save()
+    ctx.translate(15, canvas.height / 2)
+    ctx.rotate(-Math.PI / 2)
+    ctx.fillText('Amplitude', 0, 0)
+    ctx.restore()
+}
 
-    const titleTexture = new THREE.CanvasTexture(titleCanvas);
-    const titleMaterial = new THREE.SpriteMaterial({ map: titleTexture });
-    const title = new THREE.Sprite(titleMaterial);
-    title.position.set(0, 120, 0);
-    title.scale.set(80, 40, 1);
-    plotGroup.add(title);
-
-    plot2DScene.add(plotGroup);
+function create2DPlot() {
+    generateChartData()
+    nextTick(() => {
+        if (chartCanvas.value) {
+            resizeChart()
+        }
+    })
 }
 
 function createFrames(modeData: viz.ModeData) {
@@ -212,9 +312,9 @@ const views = [
     {
         // Top View
         left: 0,
-        bottom: 0.805,
+        bottom: 0.75,
         width: 0.4,
-        height: 0.20,
+        height: 0.25,
         up: [1, 0, 0],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
             // Calculate distance along Z axis to fit model in frame horizontally
@@ -229,9 +329,9 @@ const views = [
     {
         // Front View
         left: 0,
-        bottom: 0.204,
+        bottom: 0,
         width: 0.4,
-        height: 0.60,
+        height: 0.748,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
             // Calculate distance along -X axis to fit model in frame vertically
@@ -245,9 +345,9 @@ const views = [
     {
         // Side View
         left: 0.402,
-        bottom: 0.204,
+        bottom: 0,
         width: 0.25,
-        height: 0.60,
+        height: 0.748,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
             // Calculate distance along -Y axis to fit model in frame vertically
@@ -261,9 +361,9 @@ const views = [
     {
         // Isometric View
         left: 0.654,
-        bottom: 0.204,
+        bottom: 0,
         width: 0.35,
-        height: 0.8,
+        height: 1.0,
         up: [0, 0, 1],
         updateCamera: function (camera: THREE.PerspectiveCamera) {
             // Calculate distance along Z axis to fit model in frame horizontally
@@ -271,25 +371,6 @@ const views = [
             let distanceSide = 1.0 * (frameSize.z / 2 / Math.tan(camera.fov * Math.PI / 180 / 2) + frameSize.y / 2)
             camera.position.fromArray([-distanceFront, -distanceSide, frameCenter.z + 3 * frameSize.z]); // Looking along -Z (downward)
             camera.lookAt(frameCenter);
-        },
-        camera: new THREE.PerspectiveCamera,
-    },
-
-    {
-        // 2D Sine Wave Plot
-        left: 0,
-        bottom: 0,
-        width: 1.0,
-        height: 0.2,
-        up: [0, 1, 0],
-        scene: null, // Will be set to plot2DScene
-        updateCamera: function (camera: THREE.PerspectiveCamera) {
-            // Calculate distance along Z axis to fit model in frame horizontally
-            const fov = camera.fov * (Math.PI / 180);
-            const fovh = 2 * Math.atan(Math.tan(fov / 2) * camera.aspect);
-            let distance = 1.05 * (frameSize.y / 2 / Math.tan(fovh / 2) + frameSize.z)
-            camera.position.fromArray([0, 0, distance*20]); // Looking along -Z (downward)
-            camera.lookAt(0, 0, 0);
         },
         camera: new THREE.PerspectiveCamera,
     }
@@ -300,16 +381,17 @@ function animate() {
     delta += clock.getDelta()
     if (delta > 1.5 / frames.length) {
         delta = 0
-        frames[frameNum].visible = false;
-        frameNum++
-        if (frameNum >= frames.length) frameNum = 0
-        frames[frameNum].visible = true;
+        if (frames.length > 0) {
+            frames[frameNum].visible = false;
+            frameNum++
+            if (frameNum >= frames.length) frameNum = 0
+            frames[frameNum].visible = true;
+        }
         render();
     }
 }
 
 function render() {
-
     const canvas = renderer.domElement;
     const canvasWidth = canvas.clientWidth;
     const canvasHeight = canvas.clientHeight;
@@ -318,12 +400,8 @@ function render() {
     }
 
     for (let ii = 0; ii < views.length; ++ii) {
-
         const view = views[ii];
         const camera = view.camera;
-
-        // Use 2D plot scene for the last view
-        const sceneToRender = (ii === 4) ? plot2DScene : scene;
 
         view.updateCamera(camera);
 
@@ -339,12 +417,11 @@ function render() {
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
 
-        renderer.render(sceneToRender, camera);
+        renderer.render(scene, camera);
     }
 }
 
 onMounted(() => {
-
     const canvas = <HTMLCanvasElement>document.getElementById('modeVizCanvas')!;
 
     for (let ii = 0; ii < views.length; ++ii) {
@@ -361,13 +438,30 @@ onMounted(() => {
     renderer = new THREE.WebGLRenderer({ antialias: true, canvas });
     renderer.setClearColor(0x3a3b3c);
 
+    // Initialize chart
+    if (chartCanvas.value) {
+        chartCtx = chartCanvas.value.getContext('2d')!
+        resizeChart()
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', resizeChart)
+
     animate();
 })
 
 </script>
 
 <template>
-    <canvas id="modeVizCanvas" class="h-100 w-100"></canvas>
+    <div class="h-100 w-100 d-flex flex-column">
+        <!-- 3D Mode Visualization - Takes 80% height -->
+        <div class="flex-grow-1" style="height: 80%;">
+            <canvas id="modeVizCanvas" class="h-100 w-100"></canvas>
+        </div>
+        
+        <!-- 2D Chart - Takes 20% height -->
+        <div class="border-top bg-white" style="height: 20%;">
+            <canvas ref="chartCanvas" class="w-100 h-100"></canvas>
+        </div>
+    </div>
 </template>
-
-<style scoped></style>
