@@ -241,36 +241,89 @@ const charts = computed(() => {
     return objs
 })
 
+// Add Blade Tip Deflection Chart with Local Line Data
 const bladeTipChart = computed(() => {
-    const configs = [
-        { frequency: 0.05, amplitude: 70, phase: 0, label: 'sin(x)', color: '#1f77b4' },
-        { frequency: 0.1, amplitude: 50, phase: 0, label: 'sin(2x)', color: '#ff7f0e' },
-        { frequency: 0.15, amplitude: 40, phase: 0, label: 'sin(3x)', color: '#2ca02c' },
-        { frequency: 0.08, amplitude: 30, phase: Math.PI/4, label: 'sin(1.6x)', color: '#d62728' }
-    ]
+    const currentModeData = project.modeViz[project.currentVizID]
 
-    let data = { datasets: [] } as ChartData<'scatter'>
-
-    // Generate data for each sine wave
-    configs.forEach(config => {
-        const points: {x: number, y: number}[] = []
-        for (let i = 0; i < 200; i++) {
-            const x = (i - 100) * 0.1
-            const y = config.amplitude * Math.sin(x * (config.frequency / 0.05) + config.phase)
-            points.push({ x, y })
+    // Get Component names
+    const componentNames = new Set<string>()
+    for (const frame of currentModeData.Frames) {
+        for (const componentName in frame.Components) {
+            componentNames.add(componentName)
         }
+    }
+    console.log("Component Names:", Array.from(componentNames))
 
-        data.datasets.push({
-            label: config.label,
-            data: points,
-            borderColor: config.color,
-            backgroundColor: config.color,
-            showLine: true,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            borderWidth: 2,
-        })
-    })
+    const datasets: any[] = []
+    const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']       // Expecting 3 blades with 2 series each (Flap and Edge)
+    let colorIndex = 0
+
+    // Loop over each component (blade) - similar to PlotTipDeflection
+    for (const componentName of componentNames) {
+        console.log("Adding series for", componentName)
+        
+        // For the blade tip, we only need the last point of each frame
+        const tipFlapData: {x: number, y: number}[] = []
+        const tipEdgeData: {x: number, y: number}[] = []
+        
+        for (let frameIndex = 0; frameIndex < currentModeData.Frames.length; frameIndex++) {
+            const frame = currentModeData.Frames[frameIndex]
+            
+            if (frame.Components[componentName]) {
+                const component = frame.Components[componentName]
+                
+                // Check if LocalLine exists and has data
+                if (component.LocalLine && component.LocalLine.length > 0) {
+                    // Get the last point (tip)
+                    const tipPoint = component.LocalLine[component.LocalLine.length - 1]
+                    
+                    tipFlapData.push({
+                        x: frameIndex + 1, // Frame numbers start from 1
+                        y: tipPoint.XYZ[0]  // X coordinate (Flap direction)
+                    })
+                    
+                    tipEdgeData.push({
+                        x: frameIndex + 1, // Frame numbers start from 1
+                        y: tipPoint.XYZ[1]  // Y coordinate (Edge direction)
+                    })
+                }
+            }
+        }
+        
+        console.log("Tip Flap data:", tipFlapData)
+        console.log("Tip Edge data:", tipEdgeData)
+        
+        // Create Flap series
+        if (tipFlapData.length > 0) {
+            datasets.push({
+                label: `Flap_${componentName}`,
+                data: tipFlapData,
+                borderColor: colors[colorIndex % colors.length],
+                backgroundColor: colors[colorIndex % colors.length],
+                showLine: true,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                borderWidth: 2,
+            })
+        }
+        
+        // Create Edge series
+        if (tipEdgeData.length > 0) {
+            datasets.push({
+                label: `Edge_${componentName}`,
+                data: tipEdgeData,
+                borderColor: colors[(colorIndex + 1) % colors.length],
+                backgroundColor: colors[(colorIndex + 1) % colors.length],
+                showLine: true,
+                pointRadius: 2,
+                pointHoverRadius: 4,
+                borderWidth: 2,
+                borderDash: [5, 5], // Dashed line to distinguish from Flap
+            })
+        }
+        
+        colorIndex += 2 // Increment by 2 since we use 2 colors per component
+    }
 
     const options: ChartOptions<'scatter'> = {
         responsive: true,
@@ -280,12 +333,12 @@ const bladeTipChart = computed(() => {
                 display: true,
                 position: 'right',
                 labels: {
-                    font: { size: 12 }
+                    font: { size: 10 }
                 }
             },
             title: {
                 display: true,
-                text: 'Blade Tip Deflection across Frames',
+                text: 'Blade Tip Deflection',
                 font: { size: 16, weight: 'bold' }
             }
         },
@@ -312,9 +365,8 @@ const bladeTipChart = computed(() => {
         animation: { duration: 0 }
     }
 
-    return { data, options }
+    return { data: { datasets }, options }
 })
-
 
 
 </script>
@@ -604,12 +656,12 @@ const bladeTipChart = computed(() => {
             <div class="card-body">
                 <div class="row">
                     <div class="col-10">
-                        <!-- 3D Mode Visualization (80% height) -->
+                        <!-- 3D Mode Visualization -->
                         <div style="width:100%; height: 80vh">
                             <ModeViz :ModeData="project.modeViz[project.currentVizID]" :showNodePaths="showNodePaths">
                             </ModeViz>
                         </div>
-                        <!-- 2D Blade Tip Deflection Chart (20% height) -->
+                        <!-- 2D Blade Tip Deflection Chart -->
                         <div style="width:100%; height: 30vh" class="mt-3">
                             <Scatter ref="bladeTipChart" :options="bladeTipChart.options" :data="bladeTipChart.data" />
                         </div>
