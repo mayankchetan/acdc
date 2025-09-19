@@ -609,7 +609,7 @@ const bladeTipChart = computed(() => {
                             <ModeViz :ModeData="project.modeViz[project.currentVizID]" :showNodePaths="showNodePaths">
                             </ModeViz>
                         </div>
-                        <!-- 2D Sine Wave Chart (20% height) -->
+                        <!-- 2D Blade Tip Deflection Chart (20% height) -->
                         <div style="width:100%; height: 30vh" class="mt-3">
                             <Scatter ref="bladeTipChart" :options="bladeTipChart.options" :data="bladeTipChart.data" />
                         </div>

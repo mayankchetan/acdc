@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -133,12 +134,15 @@ func LoadVTK(path string) (*VTKFile, *VTKFile, error) {
 		return nil, nil, err
 	}
 
+	// Skip for non-blade files for local coords conversion
+	if !strings.Contains(filepath.Base(path), "Blade") {
+		return vf, nil, nil
+	}
+
 	local_vf, err := Global2Local(vf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Failed to convert global coordinates to local: %w", err)
 	}
-	fmt.Println(vf.PolyData.Piece.Points.DataArray.MatrixF32)
-	fmt.Println(local_vf.PolyData.Piece.Points.DataArray.MatrixF32)
 
 	return vf, local_vf, nil
 }
